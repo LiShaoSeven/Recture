@@ -1,4 +1,4 @@
-﻿﻿﻿<?xml version='1.0' encoding='utf-8'?>
+﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿<?xml version='1.0' encoding='utf-8'?>
 <SettingsFile xmlns="uri:settings" CurrentProfile="(Default)">
   <Profiles>
     <Profile Name="(Default)" />
@@ -9,6 +9,15 @@
     </Setting>
     <Setting Name="EndHotkey" Type="System.String" Scope="User">
       <Value Profile="(Default)" />
+    </Setting>
+    <Setting Name="CaptureMode" Type="System.String" Scope="User">
+      <Value Profile="(Default)">Manual</Value>
+    </Setting>
+    <Setting Name="CaptureKey" Type="System.String" Scope="User">
+      <Value Profile="(Default)">Space</Value>
+    </Setting>
+    <Setting Name="ScrollCaptureKey" Type="System.String" Scope="User">
+      <Value Profile="(Default)">X</Value>
     </Setting>
   </Settings>
 </SettingsFile>

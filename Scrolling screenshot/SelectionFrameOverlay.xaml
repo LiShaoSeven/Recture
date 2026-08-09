@@ -1,0 +1,16 @@
+<Window x:Class="Recture.SelectionFrameOverlay"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        Topmost="True"
+        ShowActivated="False"
+        ShowInTaskbar="False"
+        Focusable="False"
+        ResizeMode="NoResize"
+        SizeToContent="Manual">
+    <Canvas x:Name="OverlayCanvas" Background="Transparent">
+        <Rectangle x:Name="RedRectBorder" Stroke="#FFE53935" StrokeThickness="3" SnapsToDevicePixels="True" />
+    </Canvas>
+</Window>

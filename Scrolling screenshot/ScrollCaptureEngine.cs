@@ -459,16 +459,17 @@ namespace Recture
 
         private SelectionInfo _selection;
         private Bitmap _resultBitmap;
-        private Bitmap _currentFrame;
         private bool _isRunning;
         private bool _isPaused;
-        private Thread _previewThread;
-        private object _frameLock = new object();
+        private object _resultLock = new object();
 
         public bool IsRunning => _isRunning;
 
-        // The key used to capture a single frame in manual mode (default: Space)
+        // 普通手动截图按键：按下即拼接当前选区一帧（不滚动）
         public Key CaptureKey { get; set; } = Key.Space;
+
+        // 滚动截图按键：按下会先滚动选区高度再拼接一帧
+        public Key ScrollCaptureKey { get; set; } = Key.X;
 
         public void StartCapture(SelectionInfo selection)
         {
@@ -478,11 +479,7 @@ namespace Recture
             _isPaused = false;
 
             // 初始结果 = 红色区域
-            _resultBitmap = CaptureScreen(selection.RedRect);
-
-            // start continuous preview thread
-            _previewThread = new Thread(PreviewLoop) { IsBackground = true, Name = "ManualPreviewThread" };
-            _previewThread.Start();
+            lock (_resultLock) { _resultBitmap = CaptureScreen(selection.RedRect); }
 
             // Hook keyboard message sink to capture key presses
             KeyboardHook.Start(OnKeyDown);
@@ -493,10 +490,15 @@ namespace Recture
             if (!_isRunning) return;
             _isRunning = false;
             KeyboardHook.Stop();
-            _previewThread?.Join(1000);
 
-            // 完成并触发
-            CaptureCompleted?.Invoke(this, new CaptureCompletedEventArgs(_resultBitmap));
+            // 所有权移交给结果窗，置空避免 Dispose 重复释放
+            Bitmap result;
+            lock (_resultLock)
+            {
+                result = _resultBitmap;
+                _resultBitmap = null;
+            }
+            CaptureCompleted?.Invoke(this, new CaptureCompletedEventArgs(result));
         }
 
         public void Pause()
@@ -509,53 +511,46 @@ namespace Recture
             _isPaused = false;
         }
 
-        private void PreviewLoop()
-        {
-            while (_isRunning)
-            {
-                if (!_isPaused)
-                {
-                    try
-                    {
-                        var frame = CaptureScreen(_selection.BlueRect);
-                        lock (_frameLock)
-                        {
-                            _currentFrame?.Dispose();
-                            _currentFrame = frame;
-                        }
-                    }
-                    catch { }
-                }
-                Thread.Sleep(200);
-            }
-        }
-
         private void OnKeyDown(System.Windows.Forms.Keys key)
         {
             if (!_isRunning || _isPaused) return;
 
             if (KeyInterop.VirtualKeyFromKey(CaptureKey) == (int)key)
             {
-                // capture current selection area and append
-                Bitmap frame;
-                lock (_frameLock)
-                {
-                    if (_currentFrame == null) return;
-                    frame = (Bitmap)_currentFrame.Clone();
-                }
+                // 手动截图：直接捕获整个选区（RedRect）内容进行拼接，不滚动
+                var frame = CaptureScreen(_selection.RedRect);
+                if (frame == null) return;
 
                 AppendFrame(frame);
                 frame.Dispose();
 
-                // after append, update preview immediately
-                lock (_frameLock)
+                int h;
+                lock (_resultLock)
                 {
-                    var newPreview = CaptureScreen(_selection.BlueRect);
-                    _currentFrame?.Dispose();
-                    _currentFrame = newPreview;
+                    h = _resultBitmap?.Height ?? 0;
                 }
+                if (h > 0)
+                    ProgressUpdated?.Invoke(this, new CaptureProgressEventArgs(h));
+            }
+            else if (KeyInterop.VirtualKeyFromKey(ScrollCaptureKey) == (int)key)
+            {
+                // 滚动截图：先滚动一帧高度，等待渲染，再拼接
+                AutoScrollOneFrame();
+                System.Threading.Thread.Sleep(150);
 
-                ProgressUpdated?.Invoke(this, new CaptureProgressEventArgs(_resultBitmap.Height));
+                var frame = CaptureScreen(_selection.RedRect);
+                if (frame == null) return;
+
+                AppendFrame(frame);
+                frame.Dispose();
+
+                int h;
+                lock (_resultLock)
+                {
+                    h = _resultBitmap?.Height ?? 0;
+                }
+                if (h > 0)
+                    ProgressUpdated?.Invoke(this, new CaptureProgressEventArgs(h));
             }
             else if (key == Keys.Escape)
             {
@@ -565,18 +560,25 @@ namespace Recture
 
         private void AppendFrame(Bitmap frame)
         {
-            int width = frame.Width;
-            int fh = frame.Height;
-            int oldH = _resultBitmap.Height;
-            int newH = oldH + fh;
-            var newResult = new Bitmap(width, newH, PixelFormat.Format24bppRgb);
-            using (var g = Graphics.FromImage(newResult))
+            if (frame == null) return;
+
+            lock (_resultLock)
             {
-                g.DrawImage(_resultBitmap, 0, 0, width, oldH);
-                g.DrawImage(frame, 0, oldH);
+                if (_resultBitmap == null) return;
+
+                // 手动模式：按下截图键即把当前选区内容整张追加到结果底部，不做匹配/重叠检测
+                int width = Math.Max(_resultBitmap.Width, frame.Width);
+                int oldH = _resultBitmap.Height;
+                int newH = oldH + frame.Height;
+                var newResult = new Bitmap(width, newH, PixelFormat.Format24bppRgb);
+                using (var g = Graphics.FromImage(newResult))
+                {
+                    g.DrawImage(_resultBitmap, 0, 0, _resultBitmap.Width, oldH);
+                    g.DrawImage(frame, 0, oldH, frame.Width, frame.Height);
+                }
+                _resultBitmap.Dispose();
+                _resultBitmap = newResult;
             }
-            _resultBitmap?.Dispose();
-            _resultBitmap = newResult;
         }
 
         private Bitmap CaptureScreen(Rectangle rect)
@@ -589,11 +591,27 @@ namespace Recture
             return bmp;
         }
 
-        public Bitmap GetCurrentFrame()
+        public Bitmap GetCurrentResult()
         {
-            lock (_frameLock)
+            lock (_resultLock)
             {
-                return _currentFrame == null ? null : (Bitmap)_currentFrame.Clone();
+                return _resultBitmap == null ? null : (Bitmap)_resultBitmap.Clone();
+            }
+        }
+
+        public int ResultWidth
+        {
+            get
+            {
+                lock (_resultLock) { return _resultBitmap?.Width ?? 0; }
+            }
+        }
+
+        public int ResultHeight
+        {
+            get
+            {
+                lock (_resultLock) { return _resultBitmap?.Height ?? 0; }
             }
         }
 
@@ -601,59 +619,159 @@ namespace Recture
         {
             _isRunning = false;
             KeyboardHook.Stop();
-            _previewThread?.Join(500);
-            _resultBitmap?.Dispose();
-            lock (_frameLock)
+            lock (_resultLock)
             {
-                _currentFrame?.Dispose();
+                _resultBitmap?.Dispose();
+                _resultBitmap = null;
             }
         }
+
+        // 在选区中心模拟一次鼠标滚轮事件。delta 为正向上滚，为负向下滚；标准滚轮一格 = 120。
+        public void ScrollWheel(int delta)
+        {
+            if (!_isRunning) return;
+            try
+            {
+                var r = _selection.RedRect;
+                int cx = r.X + r.Width / 2;
+                int cy = r.Y + r.Height / 2;
+                SetCursorPos(cx, cy);
+                mouse_event(MOUSEEVENTF_WHEEL, 0, 0, (uint)delta, IntPtr.Zero);
+            }
+            catch { }
+        }
+
+        // 自动滚动一次：滚动距离 = 选区高度（RedRect.Height）像素，向下滚
+        // 即"滚动后刚好看不见前一次截图的内容"
+        private void AutoScrollOneFrame()
+        {
+            int pixels = _selection.RedRect.Height;
+            int totalDelta = PixelsToWheelDelta(pixels);
+            ScrollWheel(-totalDelta);
+        }
+
+        // 像素 → 滚轮 delta 换算：查询系统实际滚动参数
+        private static int PixelsToWheelDelta(int pixels)
+        {
+            // SPI_GETWHEELSCROLLLINES: 一个滚轮 notch(120 delta) 滚动的行数，默认 3
+            int scrollLines = 3;
+            try
+            {
+                uint val = 0;
+                if (SystemParametersInfo(SPI_GETWHEELSCROLLLINES, 0, ref val, 0) && val > 0)
+                    scrollLines = (int)val;
+            }
+            catch { }
+
+            // 一行像素高度 ≈ SM_CYVSCROLL（滚动条按钮高度），默认约 16
+            int lineHeight = 16;
+            try
+            {
+                int cy = GetSystemMetrics(SM_CYVSCROLL);
+                if (cy > 0) lineHeight = cy;
+            }
+            catch { }
+
+            int pixelsPerNotch = scrollLines * lineHeight; // 一个 120 delta 实际滚动像素数
+            if (pixelsPerNotch <= 0) pixelsPerNotch = 48;
+
+            // 先算出需要多少个完整 notch，再补一个余数 notch 覆盖剩余像素
+            int fullNotches = pixels / pixelsPerNotch;
+            int remainder = pixels % pixelsPerNotch;
+
+            // 每个 notch 固定 120 delta；余数按比例计算，至少 1 delta
+            int delta = fullNotches * 120;
+            if (remainder > 0)
+                delta += Math.Max(1, (int)Math.Round((double)remainder / pixelsPerNotch * 120.0));
+
+            return delta < 120 ? 120 : delta;
+        }
+
+        private const uint SPI_GETWHEELSCROLLLINES = 0x0068;
+        private const int SM_CYVSCROLL = 20;
+
+        private const uint MOUSEEVENTF_WHEEL = 0x0800;
+
+        [DllImport("user32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool SetCursorPos(int x, int y);
+
+        [DllImport("user32.dll")]
+        private static extern void mouse_event(uint dwFlags, uint dx, uint dy, uint dwData, IntPtr dwExtraInfo);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool SystemParametersInfo(uint uiAction, uint uiParam, ref uint pvParam, uint fWinIni);
+
+        [DllImport("user32.dll")]
+        private static extern int GetSystemMetrics(int nIndex);
     }
 
-    // Simple keyboard hook util using Win32 low-level keyboard hook via WinForms message loop helper
+    // 全局低级键盘钩子：NativeWindow 隐藏窗口没有键盘焦点，收不到 WM_KEYDOWN，
+    // 必须用 WH_KEYBOARD_LL 才能在目标程序拥有焦点时捕获按键。
     internal static class KeyboardHook
     {
-        private static MessageWindow _msgWindow;
+        private const int WH_KEYBOARD_LL = 13;
+        private const int WM_KEYDOWN = 0x0100;
+        private const int WM_SYSKEYDOWN = 0x0104;
+
+        private delegate IntPtr LowLevelKeyboardProc(int nCode, IntPtr wParam, IntPtr lParam);
+        private static LowLevelKeyboardProc _proc;
+        private static IntPtr _hookId = IntPtr.Zero;
+        private static Action<System.Windows.Forms.Keys> _onKeyDown;
+
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern IntPtr SetWindowsHookEx(int idHook, LowLevelKeyboardProc lpfn, IntPtr hMod, uint dwThreadId);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool UnhookWindowsHookEx(IntPtr hhk);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern IntPtr CallNextHookEx(IntPtr hhk, int nCode, IntPtr wParam, IntPtr lParam);
+
+        [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+        private static extern IntPtr GetModuleHandle(string lpModuleName);
 
         public static void Start(Action<System.Windows.Forms.Keys> onKeyDown)
         {
-            if (_msgWindow != null) return;
-            _msgWindow = new MessageWindow(onKeyDown);
+            if (_hookId != IntPtr.Zero) return;
+            _onKeyDown = onKeyDown;
+            _proc = new LowLevelKeyboardProc(HookCallback);
+            IntPtr hMod = IntPtr.Zero;
+            try
+            {
+                using (var curProcess = System.Diagnostics.Process.GetCurrentProcess())
+                using (var curModule = curProcess.MainModule)
+                {
+                    hMod = GetModuleHandle(curModule.ModuleName);
+                }
+            }
+            catch { }
+            _hookId = SetWindowsHookEx(WH_KEYBOARD_LL, _proc, hMod, 0);
         }
 
         public static void Stop()
         {
-            if (_msgWindow == null) return;
-            _msgWindow.Dispose();
-            _msgWindow = null;
+            if (_hookId == IntPtr.Zero) return;
+            UnhookWindowsHookEx(_hookId);
+            _hookId = IntPtr.Zero;
+            _onKeyDown = null;
+            _proc = null;
         }
 
-        private class MessageWindow : System.Windows.Forms.NativeWindow, IDisposable
+        private static IntPtr HookCallback(int nCode, IntPtr wParam, IntPtr lParam)
         {
-            private Action<System.Windows.Forms.Keys> _onKeyDown;
-
-            public MessageWindow(Action<System.Windows.Forms.Keys> onKeyDown)
+            if (nCode >= 0 && _onKeyDown != null)
             {
-                _onKeyDown = onKeyDown;
-                CreateHandle(new System.Windows.Forms.CreateParams());
-            }
-
-            protected override void WndProc(ref System.Windows.Forms.Message m)
-            {
-                const int WM_KEYDOWN = 0x0100;
-                const int WM_SYSKEYDOWN = 0x0104;
-                if (m.Msg == WM_KEYDOWN || m.Msg == WM_SYSKEYDOWN)
+                int msg = wParam.ToInt32();
+                if (msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN)
                 {
-                    var key = (System.Windows.Forms.Keys)(int)m.WParam;
-                    _onKeyDown?.Invoke(key);
+                    int vkCode = Marshal.ReadInt32(lParam);
+                    _onKeyDown.Invoke((System.Windows.Forms.Keys)vkCode);
                 }
-                base.WndProc(ref m);
             }
-
-            public void Dispose()
-            {
-                DestroyHandle();
-            }
+            return CallNextHookEx(_hookId, nCode, wParam, lParam);
         }
     }
 

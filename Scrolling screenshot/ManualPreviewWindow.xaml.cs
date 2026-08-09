@@ -10,35 +10,31 @@ namespace Recture
 {
     public partial class ManualPreviewWindow : Window
     {
-        private SelectionInfo _selection;
-        public ManualPreviewWindow(SelectionInfo selection)
+        private BitmapSource _lastSource;
+
+        public ManualPreviewWindow()
         {
             InitializeComponent();
-            _selection = selection;
-            PositionWindowNearSelection();
+
+            // 在构造函数中立即确定位置（DIPs），避免 Show 之后到 Loaded 之前窗口位置不确定
+            WindowStartupLocation = WindowStartupLocation.Manual;
+            PositionToTopRight();
         }
 
-        private void PositionWindowNearSelection()
+        private void PositionToTopRight()
         {
-            try
-            {
-                // Place window to the right of selection if space, otherwise left
-                var screen = System.Windows.Forms.Screen.PrimaryScreen;
-                int screenW = screen.Bounds.Width;
-                int selRight = _selection.RedRect.Right;
-                int preferredLeft = selRight + 10;
+            // SystemParameters.WorkArea 是 DIPs，与 WPF Window.Left/Top 单位一致
+            double waW = SystemParameters.WorkArea.Width;
+            double waH = SystemParameters.WorkArea.Height;
+            double w = Width;
+            double h = Height;
+            if (w > waW) w = Math.Max(MinWidth, waW - 20);
+            if (h > waH) h = Math.Max(MinHeight, waH - 20);
 
-                if (preferredLeft + Width > screenW)
-                {
-                    Left = Math.Max(0, _selection.RedRect.Left - Width - 10);
-                }
-                else
-                {
-                    Left = preferredLeft;
-                }
-                Top = Math.Max(0, _selection.RedRect.Top);
-            }
-            catch { }
+            Left = Math.Max(0, waW - w - 20);
+            Top = Math.Max(0, 20);
+            Width = w;
+            Height = h;
         }
 
         public void UpdatePreview(Bitmap bmp)
@@ -47,17 +43,24 @@ namespace Recture
             try
             {
                 IntPtr h = bmp.GetHbitmap();
-                var src = Imaging.CreateBitmapSourceFromHBitmap(h, IntPtr.Zero, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
-                PreviewImage.Source = src;
-                try { if (src.CanFreeze) src.Freeze(); } catch { }
-                DeleteObject(h);
+                try
+                {
+                    var src = Imaging.CreateBitmapSourceFromHBitmap(h, IntPtr.Zero, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
+                    try { if (src.CanFreeze) src.Freeze(); } catch { }
+                    PreviewImage.Source = src;
+                    _lastSource = src;
+                }
+                finally
+                {
+                    DeleteObject(h);
+                }
             }
             catch { }
         }
 
-        public void UpdateStatus(int height)
+        public void UpdateStatus(int totalHeight, int frameWidth, int frameHeight)
         {
-            StatusText.Text = $"高度: {height}px";
+            StatusText.Text = $"已拼接: {totalHeight}px  (当前帧 {frameWidth}×{frameHeight})";
         }
 
         [DllImport("gdi32.dll", SetLastError = true)]

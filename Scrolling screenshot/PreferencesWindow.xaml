@@ -1,11 +1,13 @@
 <Window x:Class="Recture.PreferencesWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="首选项" Height="340" Width="450"
+        Title="首选项" Height="468" Width="450"
         WindowStartupLocation="CenterScreen"
         ResizeMode="NoResize">
     <Grid Margin="20">
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
@@ -38,12 +40,21 @@
             <RadioButton x:Name="AutoRadioButton" Content="自动" />
         </StackPanel>
 
-        <TextBlock Grid.Row="6" Grid.Column="0" Grid.ColumnSpan="2" x:Name="ConflictMessage" Foreground="Red" Margin="0 10 0 0" />
+        <TextBlock Grid.Row="6" Grid.Column="0" VerticalAlignment="Center" Margin="0 10 0 0">手动截图按钮:</TextBlock>
+        <TextBox Grid.Row="6" Grid.Column="1" x:Name="CaptureKeyTextBox" IsReadOnly="True" Background="#FFF0F0F0" Margin="5" ToolTip="仅手动模式有效，滚动后按下此键追加一帧" />
+        <Button Grid.Row="7" Grid.Column="1" x:Name="CaptureKeyButton" Content="设置按键" Margin="5" />
 
-        <StackPanel Grid.Row="7" Grid.Column="0" Grid.ColumnSpan="2" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0 20 0 0">
+        <TextBlock Grid.Row="8" Grid.Column="0" VerticalAlignment="Center" Margin="0 10 0 0">滚动截图按键:</TextBlock>
+        <TextBox Grid.Row="8" Grid.Column="1" x:Name="ScrollCaptureKeyTextBox" IsReadOnly="True" Background="#FFF0F0F0" Margin="5" ToolTip="仅手动模式有效。按下此键会先滚动选区高度再拼接一帧" />
+        <Button Grid.Row="9" Grid.Column="1" x:Name="ScrollCaptureKeyButton" Content="设置按键" Margin="5" />
+
+        <TextBlock Grid.Row="10" Grid.Column="0" Grid.ColumnSpan="2" x:Name="ConflictMessage" Foreground="OrangeRed" Margin="0 10 0 0" />
+
+        <StackPanel Grid.Row="11" Grid.Column="0" Grid.ColumnSpan="2" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0 20 0 0">
             <Button x:Name="OKButton" Content="确定" Width="80" Margin="5" />
             <Button x:Name="CancelButton" Content="取消" Width="80" Margin="5" />
             <Button x:Name="ResetButton" Content="重置" Width="80" Margin="5" />
         </StackPanel>
+        <Label Grid.Row="11" Grid.Column="0" Grid.ColumnSpan="2" Content="by LiShao_Seven  open source on github" Foreground="Gray" FontSize="10" HorizontalAlignment="Left" Margin="55,54,0,-44"/>
     </Grid>
 </Window>

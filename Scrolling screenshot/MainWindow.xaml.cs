@@ -1,4 +1,4 @@
-﻿using System;
+﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿using System;
 using System.Windows;
 using System.Windows.Input;
 using System.Drawing;
@@ -12,6 +12,7 @@ namespace Recture
         private TrayIconManager _trayIconManager;
         private ICaptureEngine _captureEngine;
         private ManualPreviewWindow _manualPreviewWindow;
+        private SelectionFrameOverlay _selectionFrameOverlay;
 
         private HotkeyInfo _startHotkey = new HotkeyInfo(HotkeyManager.GetModifierFlags(true, true, false, false), Key.F9);
         private HotkeyInfo _endHotkey = new HotkeyInfo(HotkeyManager.GetModifierFlags(true, true, false, false), Key.F10);
@@ -110,9 +111,15 @@ namespace Recture
 
         private void StartCaptureEngine(SelectionInfo selection)
         {
+            // 无论何种模式都先把选区框（无标题/无焦点）显示在屏幕上，方便用户观察
+            _selectionFrameOverlay = new SelectionFrameOverlay();
+            _selectionFrameOverlay.ShowForSelection(selection);
+
             // Determine mode from settings
             string mode = Properties.Settings.Default.CaptureMode;
             if (string.IsNullOrEmpty(mode)) mode = "Manual";
+
+            System.Windows.Threading.DispatcherTimer uiTimer = null;
 
             if (mode == "Auto")
             {
@@ -121,37 +128,59 @@ namespace Recture
             else
             {
                 var manual = new ManualCaptureEngine();
-                manual.CaptureKey = Key.Space; // could be configurable later
+                // 从首选项读取手动截图按钮
+                try
+                {
+                    var ck = Properties.Settings.Default.CaptureKey;
+                    if (!string.IsNullOrEmpty(ck) && Enum.TryParse<Key>(ck, out var parsedKey))
+                        manual.CaptureKey = parsedKey;
+                }
+                catch { }
+                // 从首选项读取滚动截图按键
+                try
+                {
+                    var sk = Properties.Settings.Default.ScrollCaptureKey;
+                    if (!string.IsNullOrEmpty(sk) && Enum.TryParse<Key>(sk, out var parsedKey))
+                        manual.ScrollCaptureKey = parsedKey;
+                }
+                catch { }
                 _captureEngine = manual;
 
-                // create manual preview window that follows selection area and shows current blue rect
-                _manualPreviewWindow = new ManualPreviewWindow(selection);
-                (_captureEngine as ManualCaptureEngine).ProgressUpdated += CaptureEngine_ProgressUpdated;
-                (_captureEngine as ManualCaptureEngine).CaptureCompleted += CaptureEngine_CaptureCompleted;
-                // Start preview updater UI bound to engine's current frame via timer
-                System.Windows.Threading.DispatcherTimer uiTimer = new System.Windows.Threading.DispatcherTimer();
-                uiTimer.Interval = TimeSpan.FromMilliseconds(250);
+                // 截图进度预览（展示已拼接结果，而非当前选区实时图像）
+                _manualPreviewWindow = new ManualPreviewWindow();
+                uiTimer = new System.Windows.Threading.DispatcherTimer();
+                uiTimer.Interval = TimeSpan.FromMilliseconds(300);
                 uiTimer.Tick += (s, e) =>
                 {
                     if (_captureEngine is ManualCaptureEngine me && _manualPreviewWindow != null)
                     {
-                        var bmp = me.GetCurrentFrame();
-                        if (bmp != null)
+                        int rw = me.ResultWidth;
+                        int rh = me.ResultHeight;
+                        // 高度>0 时才取快照，结果图可能很大，Clone 是必要的
+                        if (rh > 0)
                         {
-                            _manualPreviewWindow.UpdatePreview(bmp);
-                            bmp.Dispose();
+                            using (var bmp = me.GetCurrentResult())
+                            {
+                                if (bmp != null)
+                                    _manualPreviewWindow.UpdatePreview(bmp);
+                            }
+                            _manualPreviewWindow.UpdateStatus(rh, rw, rh);
                         }
                     }
                     else
                     {
-                        uiTimer.Stop();
+                        uiTimer?.Stop();
                     }
                 };
                 uiTimer.Start();
                 _manualPreviewWindow.Show();
             }
 
-            _captureEngine.CaptureCompleted += CaptureEngine_CaptureCompleted;
+            _captureEngine.CaptureCompleted += (s, e) =>
+            {
+                uiTimer?.Stop();
+                CaptureEngine_CaptureCompleted(s, e);
+            };
             _captureEngine.ProgressUpdated += CaptureEngine_ProgressUpdated;
             _captureEngine.StartCapture(selection);
         }
@@ -159,9 +188,9 @@ namespace Recture
         private void CaptureEngine_ProgressUpdated(object sender, CaptureProgressEventArgs e)
         {
             _trayIconManager.UpdateStatus($"截图中: {e.CurrentHeight}px");
-            if (_manualPreviewWindow != null)
+            if (_manualPreviewWindow != null && _captureEngine is ManualCaptureEngine me)
             {
-                _manualPreviewWindow.UpdateStatus(e.CurrentHeight);
+                _manualPreviewWindow.UpdateStatus(e.CurrentHeight, me.ResultWidth, e.CurrentHeight);
             }
         }
 
@@ -178,6 +207,11 @@ namespace Recture
                 {
                     _manualPreviewWindow.Close();
                     _manualPreviewWindow = null;
+                }
+                if (_selectionFrameOverlay != null)
+                {
+                    _selectionFrameOverlay.CloseOverlay();
+                    _selectionFrameOverlay = null;
                 }
             }));
         }
