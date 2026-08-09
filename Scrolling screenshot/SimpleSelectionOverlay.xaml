@@ -1,0 +1,11 @@
+<Window x:Class="Recture.SimpleSelectionOverlay"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="选择截图区域" WindowStyle="None" AllowsTransparency="True" Background="Transparent" WindowState="Maximized" Topmost="True">
+    <Grid>
+        <Image x:Name="PreviewImage" Stretch="Uniform" />
+        <Canvas x:Name="SelectionCanvas" Background="Transparent" IsHitTestVisible="True">
+            <Rectangle x:Name="SelectionRect" Stroke="DodgerBlue" StrokeThickness="2" Fill="#40ADD8E6" Visibility="Collapsed" />
+        </Canvas>
+    </Grid>
+</Window>

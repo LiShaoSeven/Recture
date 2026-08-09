@@ -1,0 +1,34 @@
+<Window x:Class="Recture.SelectionOverlay"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Selection Overlay"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        Topmost="True"
+        ShowInTaskbar="False"
+        Cursor="Cross">
+    <Grid>
+        <!-- 日字样式：四个区域与中间分界线 -->
+        <Grid.RowDefinitions>
+            <RowDefinition />
+            <RowDefinition Height="6" />
+            <RowDefinition />
+        </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition />
+            <ColumnDefinition Width="6" />
+            <ColumnDefinition />
+        </Grid.ColumnDefinitions>
+
+        <Rectangle Grid.Row="0" Grid.Column="0" x:Name="TopLeft" Fill="#80FF0000" Stroke="#FFFF0000" StrokeThickness="2" />
+        <Rectangle Grid.Row="0" Grid.Column="2" x:Name="TopRight" Fill="#80FF0000" Stroke="#FFFF0000" StrokeThickness="2" />
+        <Rectangle Grid.Row="2" Grid.Column="0" x:Name="BottomLeft" Fill="#800080FF" Stroke="#FF0080FF" StrokeThickness="2" />
+        <Rectangle Grid.Row="2" Grid.Column="2" x:Name="BottomRight" Fill="#800080FF" Stroke="#FF0080FF" StrokeThickness="2" />
+
+        <!-- Horizontal divider -->
+        <Rectangle Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="3" x:Name="HorizontalDivider" Fill="#FFFFFFFF" Cursor="SizeNS" Height="6" />
+        <!-- Vertical divider -->
+        <Rectangle Grid.Row="0" Grid.RowSpan="3" Grid.Column="1" x:Name="VerticalDivider" Fill="#FFFFFFFF" Cursor="SizeWE" Width="6" />
+    </Grid>
+</Window>
