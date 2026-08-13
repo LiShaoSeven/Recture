@@ -1,9 +1,19 @@
-# RECTURE
-## What is RECTURE
-RECTURE is a program which can help you capture a long screenshot.
-## How to use
-Under normal circumstances, you should use the manual mode to capture.
-press shortcut key to start capture.
+English version
+
+#recture
+##What is recture
+recture is a tool for capturing long screenshots.
+##How to Use
+Under normal circumstances, you can use the manual screenshot mode.
+First, press the shortcut key to start capturing. Then, use the screenshot shortcut key to capture the region and add it to the screenshot results. After that, scroll to the next section.
+Once finished, you can stop the screenshot.
+If you are using a text editor, you can enable auto-scroll mode.
+The auto-screenshot mode is currently experimental, and the quality of the results is not guaranteed.
+##Other
+Thank you for using recture.
+Unfortunately,we only have chinese language.
+
+Chinese version
 
 #recture
 ##什么是recture
