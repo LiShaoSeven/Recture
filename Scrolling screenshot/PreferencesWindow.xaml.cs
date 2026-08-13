@@ -1,9 +1,12 @@
 using System;
+using System.Diagnostics;
+using System.Reflection;
 using System.Text;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using Microsoft.Win32;
 
 namespace Recture
 {
@@ -71,6 +74,67 @@ namespace Recture
             {
                 AutoRadioButton.IsChecked = true;
             }
+
+            // 开机启动：以注册表当前实际状态为准（避免外部删除/修改导致状态不一致）
+            AutoStartCheckBox.IsChecked = IsAutoStartEnabled();
+        }
+
+        private const string AutoStartRegistryPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
+        private const string AutoStartValueName = "Recture";
+
+        private static string GetExecutablePath()
+        {
+            // Assembly.Location 在某些部署下为空字符串，回退到 Process MainModule
+            try
+            {
+                var loc = Assembly.GetExecutingAssembly().Location;
+                if (!string.IsNullOrEmpty(loc) && System.IO.File.Exists(loc))
+                    return loc;
+            }
+            catch { }
+            try
+            {
+                return Process.GetCurrentProcess().MainModule.FileName;
+            }
+            catch { }
+            return null;
+        }
+
+        private static bool IsAutoStartEnabled()
+        {
+            try
+            {
+                using (var key = Registry.CurrentUser.OpenSubKey(AutoStartRegistryPath, false))
+                {
+                    if (key == null) return false;
+                    var v = key.GetValue(AutoStartValueName) as string;
+                    return !string.IsNullOrEmpty(v);
+                }
+            }
+            catch { return false; }
+        }
+
+        private static void SetAutoStartEnabled(bool enabled)
+        {
+            try
+            {
+                using (var key = Registry.CurrentUser.CreateSubKey(AutoStartRegistryPath, true))
+                {
+                    if (key == null) return;
+                    if (enabled)
+                    {
+                        var exe = GetExecutablePath();
+                        if (string.IsNullOrEmpty(exe)) return;
+                        key.SetValue(AutoStartValueName, $"\"{exe}\"");
+                    }
+                    else
+                    {
+                        // 删除值不存在时不会抛异常
+                        key.DeleteValue(AutoStartValueName, false);
+                    }
+                }
+            }
+            catch { }
         }
 
         private void UpdateHotkeyTextBoxes()
@@ -271,6 +335,12 @@ namespace Recture
             Properties.Settings.Default.CaptureMode = (ManualRadioButton.IsChecked == true) ? "Manual" : "Auto";
             Properties.Settings.Default.CaptureKey = _tempCaptureKey.ToString();
             Properties.Settings.Default.ScrollCaptureKey = _tempScrollCaptureKey.ToString();
+
+            // 开机启动：写入/删除注册表，同时把布尔状态记入设置便于其他地方读
+            bool autoStart = AutoStartCheckBox.IsChecked == true;
+            SetAutoStartEnabled(autoStart);
+            Properties.Settings.Default.AutoStartEnabled = autoStart;
+
             Properties.Settings.Default.Save();
 
             DialogResult = true;
@@ -290,6 +360,7 @@ namespace Recture
             _tempCaptureKey = Key.Space;
             _tempScrollCaptureKey = Key.X;
             ManualRadioButton.IsChecked = true;
+            AutoStartCheckBox.IsChecked = false;
             UpdateHotkeyTextBoxes();
         }
     }

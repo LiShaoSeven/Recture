@@ -161,19 +161,112 @@ namespace Recture
 
         private void CopyButton_Click(object sender, RoutedEventArgs e)
         {
-            using (MemoryStream ms = new MemoryStream())
+            try
             {
-                _resultBitmap.Save(ms, ImageFormat.Png);
-                ms.Position = 0;
+                // 将截图以多种格式放入剪贴板，确保各类应用（微信/QQ/浏览器/Office）都能粘贴
+                // 仅放 DIB 的 WPF Clipboard.SetImage 在很多应用里粘贴不出，必须补 PNG + CF_BITMAP
+                using (var pngMs = new MemoryStream())
+                {
+                    _resultBitmap.Save(pngMs, ImageFormat.Png);
+                    var pngBytes = pngMs.ToArray();
 
-                BitmapImage bitmapImage = new BitmapImage();
-                bitmapImage.BeginInit();
-                bitmapImage.StreamSource = ms;
-                bitmapImage.CacheOption = BitmapCacheOption.OnLoad;
-                bitmapImage.EndInit();
+                    var data = new System.Windows.DataObject();
+                    // 1) PNG 流（CFSTR_PNG）—— 浏览器/Electron/现代 IM 识别
+                    data.SetData("PNG", new MemoryStream(pngBytes, false));
+                    // 2) DIBv5 —— 带透明通道，Office/绘图软件识别
+                    data.SetData(DataFormats.Dib, CreateDibV5FromBitmap(_resultBitmap), true);
+                    // 3) BitmapSource —— WPF 内部互操作
+                    data.SetImage(BitmapToBitmapSource(_resultBitmap));
 
-                Clipboard.SetImage(bitmapImage);
+                    Clipboard.Clear();
+                    Clipboard.SetDataObject(data, true);
+                }
             }
+            catch (Exception ex)
+            {
+                
+            }
+        }
+
+        private static BitmapSource BitmapToBitmapSource(Bitmap bmp)
+        {
+            IntPtr h = bmp.GetHbitmap();
+            try
+            {
+                var src = Imaging.CreateBitmapSourceFromHBitmap(h, IntPtr.Zero, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
+                try { if (src.CanFreeze) src.Freeze(); } catch { }
+                return src;
+            }
+            finally
+            {
+                DeleteObject(h);
+            }
+        }
+
+        // 生成 DIBv5 字节数组（带透明通道），用于 Clipboard DataFormats.Dib
+        private static byte[] CreateDibV5FromBitmap(Bitmap bmp)
+        {
+            int width = bmp.Width;
+            int height = bmp.Height;
+            // BITMAPV5HEADER 大小 = 124 字节
+            const int headerSize = 124;
+            int pixelSize = width * height * 4;
+            byte[] data = new byte[headerSize + pixelSize];
+
+            // BITMAPV5HEADER
+            BitConverter.GetBytes(headerSize).CopyTo(data, 0);      // bV5Size
+            BitConverter.GetBytes(width).CopyTo(data, 4);            // bV5Width
+            BitConverter.GetBytes(height).CopyTo(data, 8);          // bV5Height（正数=自底向上，复制时需要翻转）
+            BitConverter.GetBytes((short)1).CopyTo(data, 12);       // bV5Planes
+            BitConverter.GetBytes((short)32).CopyTo(data, 14);     // bV5BitCount
+            BitConverter.GetBytes(3).CopyTo(data, 16);              // bV5Compression = BI_BITFIELDS
+            BitConverter.GetBytes(pixelSize).CopyTo(data, 20);      // bV5SizeImage
+            // 28-35 bV5XPelsPerMeter, 36-43 bV5YPelsPerMeter 留 0
+            BitConverter.GetBytes(0).CopyTo(data, 44);              // bV5ClrUsed
+            BitConverter.GetBytes(0).CopyTo(data, 48);             // bV5ClrImportant
+            // 52-55 bV5RedMask   = 0x00FF0000
+            BitConverter.GetBytes(0x00FF0000).CopyTo(data, 52);
+            // 56-59 bV5GreenMask = 0x0000FF00
+            BitConverter.GetBytes(0x0000FF00).CopyTo(data, 56);
+            // 60-63 bV5BlueMask  = 0x000000FF
+            BitConverter.GetBytes(0x000000FF).CopyTo(data, 60);
+            // 64-67 bV5AlphaMask = 0xFF000000
+            BitConverter.GetBytes(0xFF000000).CopyTo(data, 64);
+            // 68 bV5CSType = LCS_GRAPHICS_COLOR_SPACE (0x73524742 'sRGB')
+            BitConverter.GetBytes(0x73524742).CopyTo(data, 68);
+            // 72-107 bV5Endpoints (CIEXYZTRIPLE) 留 0
+            // 108-115 bV5GammaRed/Green/Blue 留 0
+            // 116-123 bV5Intent 等留 0
+
+            // 拷贝像素：源是 ARGB 32bpp 顶向下；DIB 默认自底向上，需翻转 Y
+            var rect = new Rectangle(0, 0, width, height);
+            var bmpData = bmp.LockBits(rect, ImageLockMode.ReadOnly, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+            try
+            {
+                int strideSrc = bmpData.Stride;
+                int strideDst = width * 4;
+                unsafe
+                {
+                    byte* srcBase = (byte*)bmpData.Scan0;
+                    fixed (byte* dstBase = data)
+                    {
+                        byte* dstPixels = dstBase + headerSize;
+                        // DIB 自底向上：最后一行对应源图的第一行
+                        for (int y = 0; y < height; y++)
+                        {
+                            byte* srcRow = srcBase + y * strideSrc;
+                            byte* dstRow = dstPixels + (height - 1 - y) * strideDst;
+                            Buffer.MemoryCopy(srcRow, dstRow, strideDst, strideDst);
+                        }
+                    }
+                }
+            }
+            finally
+            {
+                bmp.UnlockBits(bmpData);
+            }
+
+            return data;
         }
 
         private void SaveButton_Click(object sender, RoutedEventArgs e)

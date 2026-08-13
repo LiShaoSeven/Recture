@@ -1,4 +1,4 @@
-﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿<?xml version='1.0' encoding='utf-8'?>
+﻿﻿﻿﻿﻿﻿﻿﻿﻿<?xml version='1.0' encoding='utf-8'?>
 <SettingsFile xmlns="uri:settings" CurrentProfile="(Default)">
   <Profiles>
     <Profile Name="(Default)" />
@@ -18,6 +18,9 @@
     </Setting>
     <Setting Name="ScrollCaptureKey" Type="System.String" Scope="User">
       <Value Profile="(Default)">X</Value>
+    </Setting>
+    <Setting Name="AutoStartEnabled" Type="System.Boolean" Scope="User">
+      <Value Profile="(Default)">False</Value>
     </Setting>
   </Settings>
 </SettingsFile>

@@ -15,7 +15,7 @@
             <Button x:Name="ZoomOutButton" Content="-" Width="30" Margin="5" />
             <Slider x:Name="ZoomSlider" Width="120" Minimum="0.1" Maximum="3.0" Value="1.0" TickFrequency="0.1" IsSnapToTickEnabled="False" Margin="5" />
             <Button x:Name="ZoomInButton" Content="+" Width="30" Margin="5" />
-            <Button x:Name="CopyButton" Content="复制到剪贴板" Width="120" Margin="5" Click="CopyButton_Click" />
+            <Button x:Name="CopyButton" Content="复制到剪贴板" Width="120" Margin="5" />
             <Button x:Name="SaveButton" Content="另存为文件" Width="120" Margin="5" />
             <Button x:Name="CloseButton" Content="关闭" Width="80" Margin="5" />
         </StackPanel>
